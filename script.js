@@ -90,7 +90,6 @@ function initThree() {
 // Initialize the browser
 function initBrowser() {
     initThree();
-    newTab(); // Create the first tab
     updateNavigationButtons();
 }
 
