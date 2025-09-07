@@ -90,6 +90,7 @@ function initThree() {
 // Initialize the browser
 function initBrowser() {
     initThree();
+    newTab(); // Create the first tab
     updateNavigationButtons();
 }
 
@@ -318,6 +319,10 @@ function loadStartPage() {
                 <div class="link-card" onclick="parent.navigateToUrl('https://charlesmack.github.io/OnePagerMiniOS/os.html')">
                     <div style="font-size: 24px; margin-bottom: 10px;">🏠</div>
                     <div>POPS Mission Hub</div>
+                </div>
+                  <div class="link-card" onclick="parent.navigateToUrl('https://charlesmack.github.io/OnePagerMiniOS/appdrops/pops/index.html')">
+                    <div style="font-size: 24px; margin-bottom: 10px;">⭐</div>
+                    <div>POPS Media Hub</div>
                 </div>
             </div>
         </body>
