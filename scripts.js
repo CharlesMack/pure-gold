@@ -1,0 +1,831 @@
+let tabs = [];
+let activeTabId = 1;
+let tabIdCounter = 0;
+let globalHistory = [];
+let isFullscreen = false;
+let threeScene, threeCamera, threeRenderer, particlesMesh;
+let isHeaderVisible = true;
+let currentUrl = '';
+let fullscreenTimeout;
+
+// Initialize Three.js for visual effects
+function initThree() {
+    // Creating scene
+    threeScene = new THREE.Scene();
+    
+    // Creating camera
+    threeCamera = new THREE.OrthographicCamera(
+        window.innerWidth / -2,
+        window.innerWidth / 2,
+        window.innerHeight / 2,
+        window.innerHeight / -2,
+        1,
+        1000
+    );
+    threeCamera.position.z = 10;
+
+    // Creating renderer
+    threeRenderer = new THREE.WebGLRenderer({ alpha: true });
+    threeRenderer.setSize(window.innerWidth, window.innerHeight);
+    threeRenderer.domElement.className = 'three-canvas';
+    document.body.appendChild(threeRenderer.domElement);
+
+    // Creating particles
+    const particlesCount = 50;
+    const positions = new Float32Array(particlesCount * 3);
+    const velocities = [];
+    for (let i = 0; i < particlesCount; i++) {
+        positions[i * 3] = Math.random() * window.innerWidth - window.innerWidth / 2;
+        positions[i * 3 + 1] = Math.random() * window.innerHeight - window.innerHeight / 2;
+        positions[i * 3 + 2] = 0;
+        velocities.push({
+            x: (Math.random() - 0.5) * 0.5,
+            y: (Math.random() - 0.5) * 0.5
+        });
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const material = new THREE.PointsMaterial({
+        color: 0xffffff,
+        size: 3,
+        transparent: true,
+        opacity: 0.3
+    });
+    particlesMesh = new THREE.Points(geometry, material);
+    threeScene.add(particlesMesh);
+
+    // Animation loop
+    function animate() {
+        requestAnimationFrame(animate);
+        const positions = particlesMesh.geometry.attributes.position.array;
+        for (let i = 0; i < particlesCount; i++) {
+            positions[i * 3] += velocities[i].x;
+            positions[i * 3 + 1] += velocities[i].y;
+
+            // Bounce off edges
+            if (positions[i * 3] < -window.innerWidth / 2 || positions[i * 3] > window.innerWidth / 2) {
+                velocities[i].x *= -1;
+            }
+            if (positions[i * 3 + 1] < -window.innerHeight / 2 || positions[i * 3 + 1] > window.innerHeight / 2) {
+                velocities[i].y *= -1;
+            }
+        }
+        particlesMesh.geometry.attributes.position.needsUpdate = true;
+        threeRenderer.render(threeScene, threeCamera);
+    }
+    animate();
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+        threeCamera.left = window.innerWidth / -2;
+        threeCamera.right = window.innerWidth / 2;
+        threeCamera.top = window.innerHeight / 2;
+        threeCamera.bottom = window.innerHeight / -2;
+        threeCamera.updateProjectionMatrix();
+        threeRenderer.setSize(window.innerWidth, window.innerHeight);
+    });
+}
+
+// Initialize the browser
+function initBrowser() {
+    initThree();
+    newTab(); // Create the first tab
+    updateNavigationButtons();
+}
+
+function createIframeForTab() {
+    const iframe = document.createElement('iframe');
+    iframe.className = 'webpage-frame';
+    iframe.style.display = 'none';
+    iframe.src = 'about:blank';
+    document.getElementById('contentArea').appendChild(iframe);
+    setupIframeErrorHandling(iframe);
+    return iframe;
+}
+
+function setupIframeErrorHandling(iframe) {
+    iframe.onerror = () => {
+        handleIframeError('Failed to load the page due to a server or network error.');
+    };
+    iframe.onload = () => {
+        setTimeout(() => {
+            try {
+                const doc = iframe.contentDocument || iframe.contentWindow.document;
+                if (!doc || !doc.body || doc.body.innerHTML.trim() === '' || doc.title === '') {
+                    handleIframeError('The page appears to be empty or blocked.');
+                } else {
+                    hideOpenInTabButton();
+                    // Update tab title with actual page title if possible
+                    const currentTab = getCurrentTab();
+                    if (currentTab && currentTab.iframe === iframe) {
+                        currentTab.title = doc.title || currentTab.url;
+                        updateTabTitle(currentTab.title);
+                    }
+                }
+            } catch (e) {
+                handleIframeError('This site cannot be loaded due to restrictions (e.g., X-Frame-Options).');
+            }
+        }, 5000);
+    };
+}
+
+function handleIframeError(message) {
+    const statusText = document.getElementById('statusText');
+    const openInTabBtn = document.getElementById('openInTabBtn');
+    statusText.textContent = `${message} Try opening in a new tab or contact the site owner.`;
+    openInTabBtn.style.display = 'inline-block';
+    setTimeout(() => {
+        if (openInTabBtn.style.display === 'inline-block') {
+            openInTabBtn.style.display = 'none';
+            updateStatusText('Ready');
+        }
+    }, 10000);
+}
+
+function openInNewTab() {
+    if (currentUrl) {
+        window.open(currentUrl, '_blank');
+        updateStatusText(`Opened ${currentUrl} in a new tab`);
+        document.getElementById('openInTabBtn').style.display = 'none';
+    }
+}
+
+function hideOpenInTabButton() {
+    const openInTabBtn = document.getElementById('openInTabBtn');
+    openInTabBtn.style.display = 'none';
+    updateStatusText('Ready');
+}
+
+function getCurrentTab() {
+    return tabs.find(t => t.id === activeTabId);
+}
+
+function newTab() {
+    tabIdCounter++;
+    const newTabId = tabIdCounter;
+    // Prevent duplicate tab IDs
+    if (tabs.some(t => t.id === newTabId)) {
+        console.warn(`Tab ID ${newTabId} already exists, skipping creation.`);
+        return;
+    }
+    const newIframe = createIframeForTab();
+    const newTab = {
+        id: newTabId,
+        title: "New Tab",
+        url: "about:blank",
+        favicon: "🌐",
+        iframe: newIframe,
+        history: [],
+        historyIndex: -1
+    };
+    tabs.push(newTab);
+    const tabBar = document.getElementById('tabBar');
+    const newTabBtn = document.querySelector('.new-tab-btn');
+    const tabElement = document.createElement('div');
+    tabElement.className = 'tab';
+    tabElement.setAttribute('data-tab-id', newTabId);
+    tabElement.innerHTML = `
+        <div class="tab-favicon">🌐</div>
+        <div class="tab-title">New Tab</div>
+        <div class="tab-close" onclick="closeTab(${newTabId})">×</div>
+    `;
+    tabElement.onclick = () => switchToTab(newTabId);
+    tabBar.insertBefore(tabElement, newTabBtn);
+    switchToTab(newTabId);
+    loadStartPage();
+    updateStatusText('New tab opened');
+    closeMenu();
+}
+
+function closeTab(tabId) {
+    event.stopPropagation();
+    if (tabs.length === 1) {
+        updateStatusText('Cannot close the last tab');
+        return;
+    }
+    const tabIndex = tabs.findIndex(t => t.id === tabId);
+    if (tabIndex !== -1) {
+        const tabToClose = tabs[tabIndex];
+        tabToClose.iframe.remove();
+        tabs.splice(tabIndex, 1);
+        document.querySelector(`.tab[data-tab-id="${tabId}"]`).remove();
+        if (activeTabId === tabId) {
+            const newActiveIndex = tabIndex > 0 ? tabIndex - 1 : 0;
+            switchToTab(tabs[newActiveIndex].id);
+        }
+        updateStatusText('Tab closed');
+    }
+}
+
+function switchToTab(tabId) {
+    document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+    const tabElement = document.querySelector(`.tab[data-tab-id="${tabId}"]`);
+    if (tabElement) {
+        tabElement.classList.add('active');
+    }
+    tabs.forEach(t => t.iframe.style.display = 'none');
+    activeTabId = tabId;
+    const tab = getCurrentTab();
+    if (tab) {
+        tab.iframe.style.display = 'block';
+        document.getElementById('addressBar').value = tab.url;
+        currentUrl = tab.url;
+        updateStatusText(`Switched to tab: ${tab.title}`);
+        updateNavigationButtons();
+    }
+}
+
+function loadStartPage() {
+    const currentTab = getCurrentTab();
+    if (!currentTab) return;
+    const startPageHTML = `
+        <html>
+        <head>
+            <title>Pure Gold</title>
+            <style>
+                body {
+                    font-family: 'Segoe UI', sans-serif;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    text-align: center;
+                    padding: 50px 20px;
+                    margin: 0;
+                }
+                .logo {
+                    font-size: 72px;
+                    margin-bottom: 20px;
+                }
+                .title {
+                    font-size: 48px;
+                    margin-bottom: 10px;
+                    font-weight: 300;
+                }
+                .subtitle {
+                    font-size: 18px;
+                    opacity: 0.8;
+                    margin-bottom: 40px;
+                }
+                .quick-links {
+                    display: flex;
+                    justify-content: center;
+                    gap: 20px;
+                    flex-wrap: wrap;
+                    margin-top: 40px;
+                }
+                .link-card {
+                    background: rgba(255,255,255,0.1);
+                    padding: 20px;
+                    border-radius: 12px;
+                    backdrop-filter: blur(10px);
+                    cursor: pointer;
+                    transition: all 0.3s;
+                    min-width: 150px;
+                }
+                .link-card:hover {
+                    background: rgba(255,255,255,0.2);
+                    transform: translateY(-5px);
+                }
+                .search-box {
+                    background: rgba(255,255,255,0.9);
+                    border: none;
+                    padding: 15px 20px;
+                    border-radius: 25px;
+                    font-size: 16px;
+                    width: 400px;
+                    max-width: 80%;
+                    margin: 20px;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="logo">🌐</div>
+            <h1 class="title">Pure Gold</h1>
+            <p class="subtitle">Your gateway to the web</p>
+            <input type="text" class="search-box" placeholder="Search or enter URL..." onkeydown="if(event.key==='Enter') parent.navigateToUrl(this.value)">
+            <div class="quick-links">
+                <div class="link-card" onclick="parent.navigateToUrl('https://charlesmack.github.io/mobile/')">
+                    <div style="font-size: 24px; margin-bottom: 10px;">🔍</div>
+                    <div>POPS Mobile</div>
+                </div>
+                <div class="link-card" onclick="parent.navigateToUrl('https://charlesmack.github.io/system/')">
+                    <div style="font-size: 24px; margin-bottom: 10px;">📺</div>
+                    <div>POPSTube</div>
+                </div>
+                <div class="link-card" onclick="parent.navigateToUrl('https://charlesmack.github.io/command/appdrops/')">
+                    <div style="font-size: 24px; margin-bottom: 10px;">💻</div>
+                    <div>Command Center</div>
+                </div>
+                <div class="link-card" onclick="parent.navigateToUrl('https://charlesmack.github.io/OnePagerMiniOS/os.html')">
+                    <div style="font-size: 24px; margin-bottom: 10px;">🏠</div>
+                    <div>POPS Mission Hub</div>
+                </div>
+            </div>
+        </body>
+        </html>
+    `;
+    const blob = new Blob([startPageHTML], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    currentTab.iframe.src = url;
+    currentTab.url = 'about:blank';
+    currentTab.title = 'New Tab';
+    currentTab.history = [];
+    currentTab.historyIndex = -1;
+    document.getElementById('addressBar').value = '';
+    updateTabTitle(currentTab.title);
+    hideOpenInTabButton();
+}
+
+function handleAddressBar(event) {
+    if (event.key === 'Enter') {
+        const url = event.target.value;
+        navigateToUrl(url);
+    }
+}
+
+function navigateToUrl(url) {
+    if (!url) return;
+    closeAllPanels();
+    if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('about:')) {
+        if (url.includes('.') && !url.includes(' ')) {
+            url = 'https://' + url;
+        } else {
+            url = 'https://www.google.com/search?q=' + encodeURIComponent(url);
+        }
+    }
+    const currentTab = getCurrentTab();
+    if (!currentTab) return;
+    currentUrl = url;
+    showLoadingProgress();
+    document.getElementById('addressBar').value = url;
+    if (currentTab.historyIndex < currentTab.history.length - 1) {
+        currentTab.history = currentTab.history.slice(0, currentTab.historyIndex + 1);
+    }
+    currentTab.history.push({
+        url: url,
+        title: url,
+        timestamp: new Date()
+    });
+    currentTab.historyIndex = currentTab.history.length - 1;
+    globalHistory.push({
+        url: url,
+        title: url,
+        timestamp: new Date()
+    });
+    updateNavigationButtons();
+    updateHistoryPanel();
+    try {
+        currentTab.iframe.src = url;
+        currentTab.url = url;
+        currentTab.title = url;
+        updateTabTitle(currentTab.title);
+        updateStatusText('Loading ' + url);
+    } catch (error) {
+        handleIframeError('Error loading page: ' + error.message);
+    }
+}
+
+function showLoadingProgress() {
+    const loadingBar = document.getElementById('loadingBar');
+    let progress = 0;
+    const interval = setInterval(() => {
+        progress += Math.random() * 20;
+        if (progress > 90) progress = 90;
+        loadingBar.style.width = progress + '%';
+        if (progress >= 90) {
+            clearInterval(interval);
+            setTimeout(() => {
+                loadingBar.style.width = '100%';
+                setTimeout(() => {
+                    loadingBar.style.width = '0%';
+                }, 200);
+            }, 500);
+        }
+    }, 100);
+}
+
+function goBack() {
+    const currentTab = getCurrentTab();
+    if (currentTab && currentTab.historyIndex > 0) {
+        currentTab.historyIndex--;
+        const item = currentTab.history[currentTab.historyIndex];
+        currentTab.iframe.src = item.url;
+        currentTab.url = item.url;
+        currentTab.title = item.title;
+        document.getElementById('addressBar').value = item.url;
+        updateTabTitle(item.title);
+        updateNavigationButtons();
+        updateStatusText('Going back to ' + item.title);
+    }
+}
+
+function goForward() {
+    const currentTab = getCurrentTab();
+    if (currentTab && currentTab.historyIndex < currentTab.history.length - 1) {
+        currentTab.historyIndex++;
+        const item = currentTab.history[currentTab.historyIndex];
+        currentTab.iframe.src = item.url;
+        currentTab.url = item.url;
+        currentTab.title = item.title;
+        document.getElementById('addressBar').value = item.url;
+        updateTabTitle(item.title);
+        updateNavigationButtons();
+        updateStatusText('Going forward to ' + item.title);
+    }
+}
+
+function refreshPage() {
+    const currentTab = getCurrentTab();
+    if (currentTab) {
+        currentTab.iframe.src = currentTab.url;
+        updateStatusText('Refreshing page...');
+        showLoadingProgress();
+    }
+}
+
+function goHome() {
+    loadStartPage();
+    updateStatusText('Home');
+}
+
+function updateNavigationButtons() {
+    const currentTab = getCurrentTab();
+    if (currentTab) {
+        document.getElementById('backBtn').disabled = currentTab.historyIndex <= 0;
+        document.getElementById('forwardBtn').disabled = currentTab.historyIndex >= currentTab.history.length - 1;
+    }
+}
+
+function updateTabTitle(title) {
+    const tab = document.querySelector(`.tab[data-tab-id="${activeTabId}"] .tab-title`);
+    if (tab) {
+        const shortTitle = title.length > 25 ? title.substring(0, 22) + '...' : title;
+        tab.textContent = shortTitle;
+    }
+}
+
+function updateStatusText(text) {
+    document.getElementById('statusText').textContent = text;
+}
+
+function newWindow() {
+    closeMenu();
+    const newWindowFeatures = 'width=1200,height=800,scrollbars=yes,resizable=yes,toolbar=yes,menubar=yes,location=yes';
+    const newWindow = window.open('', '_blank', newWindowFeatures);
+    if (newWindow) {
+        newWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Pure Gold - New Window</title>
+                <style>
+                    body {
+                        font-family: 'Segoe UI', sans-serif;
+                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                        color: white;
+                        text-align: center;
+                        padding: 50px 20px;
+                        margin: 0;
+                    }
+                    .message {
+                        font-size: 24px;
+                        margin-bottom: 20px;
+                    }
+                    .link {
+                        color: #fff;
+                        text-decoration: underline;
+                        cursor: pointer;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="message">🌐 Pure Gold</div>
+                <p>New browser window opened!</p>
+                <p><a href="${window.location.href}" class="link">Open full browser interface</a></p>
+            </body>
+            </html>
+        `);
+        newWindow.document.close();
+        updateStatusText('New window opened');
+    } else {
+        updateStatusText('Pop-up blocked. Please allow pop-ups for this site.');
+    }
+}
+
+function closeMenu() {
+    const menu = document.getElementById('browserMenu');
+    if (menu.classList.contains('show')) {
+        menu.classList.remove('show');
+        setTimeout(() => {
+            menu.style.display = 'none';
+        }, 200);
+    }
+}
+
+function toggleMenu() {
+    const menu = document.getElementById('browserMenu');
+    const isOpen = menu.classList.contains('show');
+    if (isOpen) {
+        closeMenu();
+    } else {
+        closeAllPanels();
+        menu.style.display = 'block';
+        setTimeout(() => {
+            menu.classList.add('show');
+        }, 10);
+    }
+}
+
+function toggleHistory() {
+    closeMenu();
+    const panel = document.getElementById('historyPanel');
+    const overlay = document.getElementById('panelOverlay');
+    const isOpen = panel.classList.contains('open');
+    if (isOpen) {
+        panel.classList.remove('open');
+        overlay.classList.remove('active');
+    } else {
+        closeAllPanels();
+        panel.classList.add('open');
+        overlay.classList.add('active');
+        updateHistoryPanel();
+    }
+}
+
+function showBookmarks() {
+    closeMenu();
+    const panel = document.getElementById('bookmarksPanel');
+    const overlay = document.getElementById('panelOverlay');
+    closeAllPanels();
+    panel.classList.add('open');
+    overlay.classList.add('active');
+    updateStatusText('Bookmarks panel opened');
+}
+
+function hideBookmarks() {
+    const panel = document.getElementById('bookmarksPanel');
+    const overlay = document.getElementById('panelOverlay');
+    panel.classList.remove('open');
+    overlay.classList.remove('active');
+    updateStatusText('Bookmarks panel closed');
+}
+
+function showSettings() {
+    closeMenu();
+    const panel = document.getElementById('settingsPanel');
+    const overlay = document.getElementById('panelOverlay');
+    closeAllPanels();
+    panel.classList.add('open');
+    overlay.classList.add('active');
+    updateStatusText('Settings panel opened');
+}
+
+function hideSettings() {
+    const panel = document.getElementById('settingsPanel');
+    const overlay = document.getElementById('panelOverlay');
+    panel.classList.remove('open');
+    overlay.classList.remove('active');
+    updateStatusText('Settings panel closed');
+}
+
+function closeAllPanels() {
+    const menu = document.getElementById('browserMenu');
+    const historyPanel = document.getElementById('historyPanel');
+    const bookmarksPanel = document.getElementById('bookmarksPanel');
+    const settingsPanel = document.getElementById('settingsPanel');
+    const overlay = document.getElementById('panelOverlay');
+    menu.classList.remove('show');
+    setTimeout(() => {
+        menu.style.display = 'none';
+    }, 200);
+    historyPanel.classList.remove('open');
+    bookmarksPanel.classList.remove('open');
+    settingsPanel.classList.remove('open');
+    overlay.classList.remove('active');
+}
+
+function updateHistoryPanel() {
+    const historyList = document.getElementById('historyList');
+    historyList.innerHTML = '';
+    if (globalHistory.length === 0) {
+        historyList.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">No history items</div>';
+        return;
+    }
+    globalHistory.slice(-50).reverse().forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'history-item';
+        div.innerHTML = `
+            <div class="history-title">${item.title}</div>
+            <div class="history-url">${item.url}</div>
+            <div class="history-time">${item.timestamp.toLocaleString()}</div>
+        `;
+        div.onclick = () => {
+            navigateToUrl(item.url);
+            toggleHistory();
+        };
+        historyList.appendChild(div);
+    });
+}
+
+function toggleSetting(toggle) {
+    toggle.classList.toggle('active');
+    const label = toggle.previousElementSibling.textContent;
+    const isActive = toggle.classList.contains('active');
+    updateStatusText(`${label}: ${isActive ? 'Enabled' : 'Disabled'}`);
+}
+
+function toggleStatusBar(toggle) {
+    toggleSetting(toggle);
+    const statusBar = document.getElementById('statusBar');
+    const isActive = toggle.classList.contains('active');
+    statusBar.style.display = isActive ? 'flex' : 'none';
+}
+
+function toggleFullscreen() {
+    if (!isFullscreen) {
+        const elem = document.documentElement;
+        if (elem.requestFullscreen) {
+            elem.requestFullscreen();
+        } else if (elem.webkitRequestFullscreen) {
+            elem.webkitRequestFullscreen();
+        } else if (elem.msRequestFullscreen) {
+            elem.msRequestFullscreen();
+        }
+    } else {
+        exitFullscreen();
+    }
+    closeMenu();
+}
+
+function exitFullscreen() {
+    if (document.exitFullscreen) {
+        document.exitFullscreen();
+    } else if (document.webkitExitFullscreen) {
+        document.webkitExitFullscreen();
+    } else if (document.msExitFullscreen) {
+        document.msExitFullscreen();
+    }
+}
+
+function closeWindow() {
+    if (confirm('Are you sure you want to close this browser window?')) {
+        window.close();
+    }
+}
+
+function minimizeWindow() {
+    updateStatusText('Minimize functionality not available in browser environment');
+    setTimeout(() => {
+        updateStatusText('Ready');
+    }, 3000);
+}
+
+// Event Listeners
+document.addEventListener('click', (event) => {
+    const menu = document.getElementById('browserMenu');
+    if (!event.target.closest('.menu-btn') && !event.target.closest('.dropdown-menu') && menu.classList.contains('show')) {
+        closeMenu();
+    }
+    if (event.target.id === 'panelOverlay') {
+        closeAllPanels();
+    }
+});
+
+document.addEventListener('fullscreenchange', handleFullscreenChange);
+document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+document.addEventListener('msfullscreenchange', handleFullscreenChange);
+
+function handleFullscreenChange() {
+    const isCurrentlyFullscreen = document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
+    const contentArea = document.getElementById('contentArea');
+    if (isCurrentlyFullscreen && !isFullscreen) {
+        isFullscreen = true;
+        document.body.classList.add('fullscreen');
+        document.getElementById('exitFullscreenBtn').style.display = 'block';
+        updateStatusText('Entered fullscreen mode');
+        
+        setTimeout(() => {
+            if (isFullscreen) {
+                document.getElementById('browserHeader').classList.add('fullscreen-hidden');
+                document.getElementById('fullscreenToggle').classList.add('visible');
+                isHeaderVisible = false;
+                contentArea.style.height = '100vh';
+                contentArea.style.width = '100vw';
+                contentArea.style.top = '0';
+                const currentTab = getCurrentTab();
+                if (currentTab) {
+                    currentTab.iframe.style.height = '100vh';
+                    currentTab.iframe.style.width = '100vw';
+                    currentTab.iframe.style.top = '0';
+                }
+            }
+        }, 3000);
+        
+    } else if (!isCurrentlyFullscreen && isFullscreen) {
+        isFullscreen = false;
+        document.body.classList.remove('fullscreen');
+        document.getElementById('exitFullscreenBtn').style.display = 'none';
+        document.getElementById('browserHeader').classList.remove('fullscreen-hidden');
+        document.getElementById('fullscreenToggle').classList.remove('visible');
+        isHeaderVisible = true;
+        contentArea.style.height = '';
+        contentArea.style.width = '';
+        contentArea.style.top = '';
+        const currentTab = getCurrentTab();
+        if (currentTab) {
+            currentTab.iframe.style.height = '';
+            currentTab.iframe.style.width = '';
+            currentTab.iframe.style.top = '';
+        }
+        updateStatusText('Exited fullscreen mode');
+    }
+}
+
+document.addEventListener('mousemove', (e) => {
+    if (!isFullscreen) return;
+    clearTimeout(fullscreenTimeout);
+    if (e.clientY <= 100) {
+        if (!isHeaderVisible) {
+            document.getElementById('browserHeader').classList.remove('fullscreen-hidden');
+            document.getElementById('fullscreenToggle').classList.remove('visible');
+            isHeaderVisible = true;
+        }
+    } else {
+        fullscreenTimeout = setTimeout(() => {
+            if (isFullscreen) {
+                document.getElementById('browserHeader').classList.add('fullscreen-hidden');
+                document.getElementById('fullscreenToggle').classList.add('visible');
+                isHeaderVisible = false;
+            }
+        }, 2000);
+    }
+});
+
+document.getElementById('fullscreenToggle').addEventListener('click', () => {
+    if (!isHeaderVisible) {
+        document.getElementById('browserHeader').classList.remove('fullscreen-hidden');
+        document.getElementById('fullscreenToggle').classList.remove('visible');
+        isHeaderVisible = true;
+        fullscreenTimeout = setTimeout(() => {
+            if (isFullscreen) {
+                document.getElementById('browserHeader').classList.add('fullscreen-hidden');
+                document.getElementById('fullscreenToggle').classList.add('visible');
+                isHeaderVisible = false;
+            }
+        }, 3000);
+    }
+});
+
+document.addEventListener('keydown', (event) => {
+    if (event.ctrlKey || event.metaKey) {
+        switch (event.key) {
+            case 't':
+                event.preventDefault();
+                newTab();
+                break;
+            case 'w':
+                event.preventDefault();
+                if (tabs.length > 1) {
+                    closeTab(activeTabId);
+                }
+                break;
+            case 'r':
+                event.preventDefault();
+                refreshPage();
+                break;
+            case 'l':
+                event.preventDefault();
+                document.getElementById('addressBar').focus();
+                document.getElementById('addressBar').select();
+                break;
+            case 'h':
+                event.preventDefault();
+                toggleHistory();
+                break;
+            case 'b':
+                event.preventDefault();
+                showBookmarks();
+                break;
+            case 'F11':
+            case 'f11':
+                event.preventDefault();
+                toggleFullscreen();
+                break;
+        }
+    }
+    if (event.key === 'F11') {
+        event.preventDefault();
+        toggleFullscreen();
+    }
+    if (event.key === 'Escape') {
+        closeAllPanels();
+        if (isFullscreen) {
+            exitFullscreen();
+        }
+    }
+});
+
+window.addEventListener('load', initBrowser);
+
+document.addEventListener('dragover', (e) => e.preventDefault());
+document.addEventListener('drop', (e) => e.preventDefault());
