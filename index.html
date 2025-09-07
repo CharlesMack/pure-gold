@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pure Gold</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="panel-overlay" id="panelOverlay"></div>
+    
+    <div class="fullscreen-toggle" id="fullscreenToggle"></div>
+    
+    <div class="browser-window">
+        <div class="browser-header" id="browserHeader">
+            <div class="title-bar">
+                <div class="window-title">Pure Gold</div>
+                <div class="window-controls">
+                    <div class="control-btn close-btn" onclick="closeWindow()"></div>
+                    <div class="control-btn minimize-btn" onclick="minimizeWindow()"></div>
+                    <div class="control-btn maximize-btn" onclick="toggleFullscreen()"></div>
+                </div>
+            </div>
+
+            <div class="toolbar">
+                <button class="nav-btn" id="backBtn" onclick="goBack()" disabled>←</button>
+                <button class="nav-btn" id="forwardBtn" onclick="goForward()" disabled>→</button>
+                <button class="nav-btn" onclick="refreshPage()">⟳</button>
+                <button class="nav-btn" onclick="goHome()">⌂</button>
+                
+                <div class="address-bar-container">
+                    <span class="security-icon">🔒</span>
+                    <input type="text" class="address-bar" id="addressBar" placeholder="Enter URL or search..." onkeydown="handleAddressBar(event)">
+                </div>
+                
+                <div class="menu-btn" id="menuBtn" onclick="toggleMenu()">
+                    ⋮
+                    <div class="dropdown-menu" id="browserMenu">
+                        <div class="menu-item" onclick="newWindow()">
+                            <span class="menu-icon">🪟</span>
+                            <span>New Window</span>
+                        </div>
+                        <div class="menu-item" onclick="newTab()">
+                            <span class="menu-icon">📄</span>
+                            <span>New Tab</span>
+                        </div>
+                        <div class="menu-item" onclick="toggleHistory()">
+                            <span class="menu-icon">📖</span>
+                            <span>History</span>
+                        </div>
+                        <div class="menu-item" onclick="showBookmarks()">
+                            <span class="menu-icon">⭐</span>
+                            <span>Bookmarks</span>
+                        </div>
+                        <div class="menu-item" onclick="showSettings()">
+                            <span class="menu-icon">⚙️</span>
+                            <span>Settings</span>
+                        </div>
+                        <div class="menu-item" onclick="toggleFullscreen()">
+                            <span class="menu-icon">⛶</span>
+                            <span>Fullscreen</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-bar" id="tabBar">
+                <button class="new-tab-btn" onclick="newTab()">+</button>
+            </div>
+        </div>
+
+        <div class="content-area" id="contentArea">
+            <div class="loading-bar" id="loadingBar" style="width: 0%"></div>
+        </div>
+
+        <div class="status-bar" id="statusBar">
+            <div class="status-bar-content">
+                <span id="statusText">Ready</span>
+                <button class="open-in-tab-btn" id="openInTabBtn" onclick="openInNewTab()">Open in New Tab</button>
+            </div>
+        </div>
+
+        <div class="history-panel" id="historyPanel">
+            <div class="history-header">
+                <h3>History</h3>
+                <button class="close-panel-btn" onclick="toggleHistory()">×</button>
+            </div>
+            <div id="historyList"></div>
+        </div>
+
+        <div class="bookmarks-panel" id="bookmarksPanel">
+            <div class="panel-header">
+                <h3>Bookmarks</h3>
+                <button class="close-panel-btn" onclick="hideBookmarks()">×</button>
+            </div>
+            <div id="bookmarksList">
+                <div class="bookmark-item" onclick="navigateToUrl('https://charlesmack.github.io/mobile/')">
+                    <span class="bookmark-favicon">🔍</span>
+                    <div class="bookmark-info">
+                        <div class="bookmark-title">POPS Mobile</div>
+                        <div class="bookmark-url">https://charlesmack.github.io/mobile/</div>
+                    </div>
+                </div>
+                <div class="bookmark-item" onclick="navigateToUrl('https://charlesmack.github.io/system/')">
+                    <span class="bookmark-favicon">📺</span>
+                    <div class="bookmark-info">
+                        <div class="bookmark-title">POPSTube</div>
+                        <div class="bookmark-url">https://charlesmack.github.io/system/</div>
+                    </div>
+                </div>
+                <div class="bookmark-item" onclick="navigateToUrl('https://charlesmack.github.io/command/appdrops/')">
+                    <span class="bookmark-favicon">💻</span>
+                    <div class="bookmark-info">
+                        <div class="bookmark-title">Command Center</div>
+                        <div class="bookmark-url">https://charlesmack.github.io/command/appdrops/</div>
+                    </div>
+                </div>
+                <div class="bookmark-item" onclick="navigateToUrl('https://charlesmack.github.io/pops-media-hub/')">
+                    <span class="bookmark-favicon">💬</span>
+                    <div class="bookmark-info">
+                        <div class="bookmark-title">POPS Misson Hub</div>
+                        <div class="bookmark-url">https://charlesmack.github.io/OnePagerMiniOS/os.html</div>
+                    </div>
+                </div>
+                <div class="bookmark-item" onclick="navigateToUrl('https://zeam.com')">
+                    <span class="bookmark-favicon">📺</span>
+                    <div class="bookmark-info">
+                        <div class="bookmark-title">Zeam free local TV</div>
+                        <div class="bookmark-url">https://zeam.com</div>
+                    </div>
+                </div>
+                <div class="bookmark-item" onclick="navigateToUrl('https://www.cwtv.com/')">
+                    <span class="bookmark-favicon">📺</span>
+                    <div class="bookmark-info">
+                        <div class="bookmark-title">Official home of The CW Network</div>
+                        <div class="bookmark-url">https://www.cwtv.com/</div>
+                    </div>
+                </div>
+                <div class="bookmark-item" onclick="navigateToUrl('https://gd.games/')">
+                    <span class="bookmark-favicon">🎮</span>
+                    <div class="bookmark-info">
+                        <div class="bookmark-title">gd.games Top Free Online Web Games</div>
+                        <div class="bookmark-url">https://gd.games/</div>
+                    </div>
+                </div>
+                <div class="bookmark-item" onclick="navigateToUrl('https://mashable.com')">
+                    <span class="bookmark-favicon">📑</span>
+                    <div class="bookmark-info">
+                        <div class="bookmark-title">Mashable media company and news website</div>
+                        <div class="bookmark-url">https://mashable.com</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="settings-panel" id="settingsPanel">
+            <div class="panel-header">
+                <h3>Settings</h3>
+                <button class="close-panel-btn" onclick="hideSettings()">×</button>
+            </div>
+            <div class="settings-group">
+                <div class="settings-title">Privacy & Security</div>
+                <div class="settings-item">
+                    <span class="settings-label">Block Pop-ups</span>
+                    <div class="settings-toggle active" onclick="toggleSetting(this)"></div>
+                </div>
+                <div class="settings-item">
+                    <span class="settings-label">Enable JavaScript</span>
+                    <div class="settings-toggle active" onclick="toggleSetting(this)"></div>
+                </div>
+                <div class="settings-item">
+                    <span class="settings-label">Save Passwords</span>
+                    <div class="settings-toggle" onclick="toggleSetting(this)"></div>
+                </div>
+            </div>
+            <div class="settings-group">
+                <div class="settings-title">Appearance</div>
+                <div class="settings-item">
+                    <span class="settings-label">Dark Mode</span>
+                    <div class="settings-toggle" onclick="toggleSetting(this)"></div>
+                </div>
+                <div class="settings-item">
+                    <span class="settings-label">Show Status Bar</span>
+                    <div class="settings-toggle active" onclick="toggleStatusBar(this)"></div>
+                </div>
+                <div class="settings-item">
+                    <span class="settings-label">Animated Effects</span>
+                    <div class="settings-toggle active" onclick="toggleSetting(this)"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <button class="fullscreen-btn" id="exitFullscreenBtn" onclick="exitFullscreen()">Exit Fullscreen</button>
+
+    <script src="script.js"></script>
+</body>
+</html>
